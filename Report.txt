@@ -1,0 +1,19 @@
+XGBoost Model Report
+Cross-validation accuracy scores: [0.99890851 0.99786664 0.99801548 0.99821384 0.99846192]
+Mean cross-validation accuracy: 0.998 ± 0.000
+
+Accuracy: 0.998
+Classification Report:
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00     13422
+           1       1.00      1.00      1.00     11773
+
+    accuracy                           1.00     25195
+   macro avg       1.00      1.00      1.00     25195
+weighted avg       1.00      1.00      1.00     25195
+
+Confusion Matrix:
+[[13401    21]
+ [   25 11748]]
+ROC AUC Score: 1.000
