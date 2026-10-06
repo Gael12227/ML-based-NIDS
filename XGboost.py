@@ -1,7 +1,6 @@
-import joblib
 import pandas as pd
 
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import cross_val_score
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score
 from xgboost import XGBClassifier
 
@@ -12,8 +11,17 @@ y = data['target']  # Target variable
 
 print("Code started")
 
+data2= pd.read_csv('data2.csv')  # Load your dataset here
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)  # Split the dataset
+X_1= data2.drop('target', axis=1)  # Features
+y_1= data2['target']  # Target variable
+
+
+# Keep the external test set on the training schema. Categories that occur only
+# in the test file are represented by zero columns because the model cannot
+# learn parameters for categories absent from training.
+X_1 = X_1.reindex(columns=X.columns, fill_value=0)
+
 model = XGBClassifier(
     n_estimators=100,  
     learning_rate=0.1,  
@@ -25,19 +33,19 @@ model = XGBClassifier(
 )  # Initialize the XGBoost classifier
 
 print("Starting Cross validation")
-score = cross_val_score(model, X_train, y_train, cv=5, scoring='accuracy')
+score = cross_val_score(model, X, y, cv=5, scoring='accuracy')
 
 print(f"Cross-validation accuracy scores: {score}") 
 print(f"Mean cross-validation accuracy: {score.mean():.3f} ± {score.std():.3f}")
 
-trained_model = model.fit(X_train, y_train)
+trained_model = model.fit(X, y)  # Train on data.csv
 
-predictions = model.fit(X_train, y_train).predict(X_test)  
+predictions = trained_model.predict(X_1)
 
-accuracy = accuracy_score(y_test, predictions)
-classification_rep = classification_report(y_test, predictions)
-confusion_mat = confusion_matrix(y_test, predictions)
-roc_auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+accuracy = accuracy_score(y_1, predictions)
+classification_rep = classification_report(y_1, predictions)
+confusion_mat = confusion_matrix(y_1, predictions)
+roc_auc = roc_auc_score(y_1, trained_model.predict_proba(X_1)[:, 1])
 
 print(f"Test set accuracy: {accuracy:.3f}")
 print(f"Classification report:\n{classification_rep}")

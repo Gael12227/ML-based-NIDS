@@ -84,8 +84,8 @@ def convert_train_file(input_path: Path, output_path: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--input', default='datasets/KDDTrain+.txt')
-    ap.add_argument('--output', default='data.csv')
+    ap.add_argument('--input', default='datasets/KDDTest+.txt')
+    ap.add_argument('--output', default='data2.csv')
     ap.add_argument('--raw-dir', default=None)
     ap.add_argument('--out-dir', default='data/processed')
     ap.add_argument('--format', choices=['npy', 'csv', 'parquet'], default='npy')
