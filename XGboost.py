@@ -1,6 +1,6 @@
 import pandas as pd
 
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score
 from xgboost import XGBClassifier
 
@@ -17,15 +17,12 @@ X_1= data2.drop('target', axis=1)  # Features
 y_1= data2['target']  # Target variable
 
 
-# Keep the external test set on the training schema. Categories that occur only
-# in the test file are represented by zero columns because the model cannot
-# learn parameters for categories absent from training.
 X_1 = X_1.reindex(columns=X.columns, fill_value=0)
 
 model = XGBClassifier(
     n_estimators=100,  
     learning_rate=0.1,  
-    max_depth=5, # to test between 3 and 10
+    max_depth=5, # to be test between 3 and 10
     subsample=0.8, # test between 0.5 and 1.0
     objective='binary:logistic',  
     tree_method='hist',
