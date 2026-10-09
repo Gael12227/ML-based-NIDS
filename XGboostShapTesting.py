@@ -24,11 +24,10 @@ model = XGBClassifier(
     device = 'cuda'  
 )  # Initialize the XGBoost classifier
 
-dxtrain = DMatrix(x_train, device='cuda:0')
-dytrain = DMatrix(y_train, device='cuda:0')
 
-trained_model = model.fit(dxtrain, dytrain)  # Train on data.csv
 
+trained_model = model.fit(x_train, y_train)  # Train on data.csv
+    
 predictions = trained_model.predict(x_test)
 
 accuracy = accuracy_score(y_test, predictions)
