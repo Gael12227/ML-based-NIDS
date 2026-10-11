@@ -52,7 +52,6 @@ def analyze_and_mitigate(model, packet_df, feature_names, raw_values=None,
     # Features pushing the prediction TOWARD anomaly, strongest first.
     impacts = sorted(zip(feature_names, expl.values), key=lambda x: x[1], reverse=True)
     top_features = [f for f, v in impacts[:top_k] if v > 0]
-    print(f"[+] Top anomaly triggers: {top_features}")
 
     values = raw_values if raw_values is not None else packet_df.iloc[0].to_dict()
     snort_rule = generate_snort_rule(top_features, values, sid=sid)
