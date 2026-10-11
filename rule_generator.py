@@ -23,6 +23,10 @@ SERVICE_PORTS = {
     "service_pop_3": 110, "service_imap4": 143,
 }
 
+# dsize sanity range: below MIN is noise, above MAX can't occur in one packet
+DSIZE_MIN = 20
+DSIZE_MAX = 1460
+
 
 def _protocol(packet_data: dict) -> str:
     for proto in ("tcp", "udp", "icmp"):
@@ -43,16 +47,20 @@ def generate_snort_rule(top_features, packet_data, sid=1000001):
 
     for feat in top_features:
         val = packet_data.get(feat, 0)
-        if feat == "src_bytes" and val >= 1:
+        if feat == "src_bytes" and DSIZE_MIN <= val <= DSIZE_MAX:
             options.append(f"dsize:>{int(val)}")
         elif feat in FLAG_MAP and val == 1 and proto == "tcp":
             options.append(f"flags:{FLAG_MAP[feat]}")
+        elif feat == "service_ecr_i" and val == 1 and proto == "icmp":
+            options.append("itype:0")   # ICMP echo reply (smurf-style traffic)
         elif feat in SERVICE_PORTS and val == 1 and proto in ("tcp", "udp"):
             dst_port = SERVICE_PORTS[feat]
         elif feat == "count" and val >= 1:
             options.append(f"detection_filter:track by_src, count {int(val)}, seconds 2")
 
-    if not options and dst_port == "any":
+    # A port alone would alert on all traffic to that service, so require
+    # at least one real condition (size, flags, ICMP type or connection rate).
+    if not options:
         return ("# No header-derivable rule: top SHAP features "
                 f"({', '.join(top_features)}) cannot be expressed in Snort syntax.")
 
