@@ -4,15 +4,23 @@ from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score
 from xgboost import DMatrix, XGBClassifier
 from shap import TreeExplainer, summary_plot
+from XGboost import preprocess
 
 data = pd.read_csv('data.csv')
 
+
+
+X = preprocess(data)
 X = data.drop('target', axis=1)  # Features
 y = data['target']  # Target variable
+
+print("No of categories:",X.columns)
 
 x_train, x_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
+
+
 
 model = XGBClassifier(
     n_estimators=100,  
