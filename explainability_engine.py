@@ -1,17 +1,12 @@
 """
 Module A: SHAP explanation + Snort rule generation for one flagged flow.
-
-Run from the project root as a smoke test:
-    python explainability_engine.py
 """
 import json
 from pathlib import Path
-
 import joblib
 import numpy as np
 import pandas as pd
 import shap
-
 from rule_generator import generate_snort_rule
 
 
@@ -46,10 +41,9 @@ def analyze_and_mitigate(model, packet_df, feature_names, raw_values=None,
     explainer = explainer or shap.TreeExplainer(model)
 
     expl = explainer(packet_df)[0]
-    if expl.values.ndim == 2:          # Random Forest: (features, classes)
-        expl = expl[:, 1]              # keep the anomaly class
+    if expl.values.ndim == 2:
+        expl = expl[:, 1]
 
-    # Features pushing the prediction TOWARD anomaly, strongest first.
     impacts = sorted(zip(feature_names, expl.values), key=lambda x: x[1], reverse=True)
     top_features = [f for f, v in impacts[:top_k] if v > 0]
 
@@ -62,15 +56,16 @@ if __name__ == "__main__":
     from xgboost import XGBClassifier
 
     data = Path("data/processed")
-    X_test = pd.read_csv(data / "X_test.csv")
+    X_test_array = np.load(data / "X_test.npy", allow_pickle=True)
+    X_test = pd.DataFrame(X_test_array, columns=json.load(open(data / "feature_names.json")))
     pipeline = joblib.load(data / "pipeline.pkl")
     feature_names = json.load(open(data / "feature_names.json"))
 
     model = XGBClassifier()
-    model.load_model("xgboost_model.json")
+    model.load_model("xgboost_model_optimized.json")
 
     flagged_idx = np.where(model.predict(X_test) == 1)[0]
-    print(f"[+] {len(flagged_idx)} flows flagged as anomaly in the test set")
+    print(f"{len(flagged_idx)} flows flagged as anomaly in the test set")
 
     found = 0
     for i in flagged_idx[:300]:
@@ -80,10 +75,10 @@ if __name__ == "__main__":
             raw_values=to_raw_values(pipeline, packet_df),
         )
         if not rule.startswith("#"):
-            print(f"[+] Flow {i} -> Snort rule:\n{rule}\n")
+            print(f"Flow {i} -> Snort rule:\n{rule}\n")
             found += 1
             if found == 3:
                 break
 
     if found == 0:
-        print("[!] None of the first 300 flagged flows produced a header-derivable rule.")
+        print("None of the first 300 flagged flows produced a header-derivable rule.")

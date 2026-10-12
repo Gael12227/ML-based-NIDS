@@ -7,9 +7,12 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
-
-data/raw/
-data/processed/
-models/
 *.pcap
 *.pcapng
+temp_upload.pcap
+data/raw/
+models/
+data/processed/*
+!data/processed/feature_names.json
+!data/processed/pipeline.pkl
+!data/processed/X_test.npy
