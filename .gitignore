@@ -9,9 +9,10 @@ __pycache__/
 .DS_Store
 *.pcap
 *.pcapng
-temp_upload.pcap
 data/raw/
 models/
+Documents/
+pcap packets/
 data/processed/*
 !data/processed/feature_names.json
 !data/processed/pipeline.pkl

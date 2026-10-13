@@ -281,8 +281,30 @@ def render_waterfall(expl):
 
 def analyze(flow_df, raw_values, source, flow_label, normal_thr, known_thr, check_normal):
     """Run the full detection + explanation + mitigation chain for one flow."""
+    raw_values_dict = as_dict(raw_values)
+    if source in st.session_state.allowlist_ips:
+        prob = 0.0
+        result = {
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "source": source,
+            "flow": flow_label,
+            "prob": prob,
+            "normal_thr": normal_thr,
+            "known_thr": known_thr,
+            "rule": "Bypassed: Source IP is on the SOC Allowlist.",
+            "drivers": pd.DataFrame(),
+            "shap_png": None,
+            "level": "clear",
+            "origin": "Allowlist Override",
+            "severity": "None",
+            "raw": pd.DataFrame({"Feature": list(raw_values_dict.keys()), "Value": [str(v) for v in raw_values_dict.values()]}),
+            "revoked": False,
+            "alert_id": None
+        }
+        st.session_state.result = result
+        st.success(f"Traffic from {source} automatically permitted (SOC Allowlist).")
+        return
     prob = float(model.predict_proba(flow_df)[0][1])
-    raw_values = as_dict(raw_values)
 
     result = {
         "time": datetime.now().strftime("%H:%M:%S"),
@@ -295,7 +317,7 @@ def analyze(flow_df, raw_values, source, flow_label, normal_thr, known_thr, chec
         "drivers": pd.DataFrame(),
         "shap_png": None,
         "raw": pd.DataFrame(
-            {"Feature": list(raw_values.keys()), "Value": [str(v) for v in raw_values.values()]}
+            {"Feature": list(raw_values_dict.keys()), "Value": [str(v) for v in raw_values_dict.values()]}
         ),
         "revoked": False,
     }
@@ -306,15 +328,14 @@ def analyze(flow_df, raw_values, source, flow_label, normal_thr, known_thr, chec
         result["severity"] = "None"
     else:
         expl, snort_rule = analyze_and_mitigate(
-            model, flow_df, feature_names, raw_values=raw_values, explainer=explainer
+            model, flow_df, feature_names, raw_values=raw_values_dict, explainer=explainer
         )
         result["rule"] = snort_rule
         result["origin"] = "Known dataset anomaly" if prob >= known_thr else "Zero-day anomaly"
         result["level"] = "watch" if snort_rule.startswith("#") else "alert"
         result["severity"] = "Benign volume spike" if result["level"] == "watch" else "Harmful"
-        result["drivers"] = build_drivers(expl, raw_values)
+        result["drivers"] = build_drivers(expl, raw_values_dict)
         result["shap_png"] = render_waterfall(expl)
-
     st.session_state.ledger.append(
         {
             "Time": result["time"],
@@ -327,32 +348,47 @@ def analyze(flow_df, raw_values, source, flow_label, normal_thr, known_thr, chec
         }
     )
     result["ledger_idx"] = len(st.session_state.ledger) - 1
-    st.session_state.result = result
-    
     try:
+        features_json = json.dumps(raw_values_dict)
+        
         cursor.execute("""
-            INSERT INTO Threat_Logs (source_ip, destination_ip, confidence_score, threat_severity, anomaly_origin) 
-            VALUES (:1, :2, :3, :4, :5) RETURNING alert_id INTO :alert_id
-        """, (source, "Target_Interface", prob, result["severity"], result["origin"]))
+            INSERT INTO Threat_Logs (source_ip, destination_ip, confidence_score, threat_severity, anomaly_origin, raw_features) 
+            VALUES (:1, :2, :3, :4, :5, :6) RETURNING alert_id INTO :alert_id
+        """, (source, "Target_Interface", prob, result["severity"], result["origin"], features_json))
         
         alert_id = cursor.var(oracledb.NUMBER)
-        
+        result["alert_id"] = alert_id.getvalue()[0]
         if result["rule"] and not result["rule"].startswith("#"):
             cursor.execute("""
                 INSERT INTO Generated_Rules (alert_id, snort_syntax) 
                 VALUES (:1, :2)
-            """, (alert_id.getvalue()[0], result["rule"]))
+            """, (result["alert_id"], result["rule"]))
             
         db_conn.commit()
     except Exception as e:
         print(f"Failed to log to database: {e}")
+        result["alert_id"] = None
+
+    st.session_state.result = result
 
 
 def revoke_rule():
+    """Overrides a false positive, adds to allowlist and flags for MLOps retraining."""
     r = st.session_state.result
     if r and not r["revoked"]:
         r["revoked"] = True
         st.session_state.ledger[r["ledger_idx"]]["Status"] = "Revoked (false positive)"
+        st.session_state.allowlist_ips.add(r["source"])
+        if r.get("alert_id") is not None:
+            try:
+                cursor.execute("""
+                    UPDATE Threat_Logs 
+                    SET threat_severity = 'False Positive' 
+                    WHERE alert_id = :1
+                """, (r["alert_id"],))
+                db_conn.commit()
+            except Exception as e:
+                print(f"Failed to update database: {e}")
 
 
 def gauge_html(prob, normal_thr, known_thr):
