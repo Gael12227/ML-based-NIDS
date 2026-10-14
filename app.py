@@ -224,8 +224,17 @@ def load_assets():
 
 model, pipeline, feature_names, explainer, X_test, flagged_idx, test_proba = load_assets()
 
-st.session_state.setdefault("result", None)
-st.session_state.setdefault("ledger", [])
+if "result" not in st.session_state:
+    st.session_state.result = None
+    
+if "ledger" not in st.session_state:
+    st.session_state.ledger = []
+    
+if "allowlist_ips" not in st.session_state:
+    st.session_state.allowlist_ips = set()
+
+NORMAL_THR = 0.30
+KNOWN_THR = 0.85
 
 def notice(text, kind="info"):
     st.markdown(f'<div class="notice {kind}">{html_lib.escape(text)}</div>', unsafe_allow_html=True)
@@ -320,6 +329,7 @@ def analyze(flow_df, raw_values, source, flow_label, normal_thr, known_thr, chec
             {"Feature": list(raw_values_dict.keys()), "Value": [str(v) for v in raw_values_dict.values()]}
         ),
         "revoked": False,
+        "alert_id": None
     }
 
     if check_normal and prob < normal_thr:
@@ -348,29 +358,28 @@ def analyze(flow_df, raw_values, source, flow_label, normal_thr, known_thr, chec
         }
     )
     result["ledger_idx"] = len(st.session_state.ledger) - 1
-    try:
-        features_json = json.dumps(raw_values_dict)
-        
-        cursor.execute("""
-            INSERT INTO Threat_Logs (source_ip, destination_ip, confidence_score, threat_severity, anomaly_origin, raw_features) 
-            VALUES (:1, :2, :3, :4, :5, :6) RETURNING alert_id INTO :alert_id
-        """, (source, "Target_Interface", prob, result["severity"], result["origin"], features_json))
-        
-        alert_id = cursor.var(oracledb.NUMBER)
-        result["alert_id"] = alert_id.getvalue()[0]
-        if result["rule"] and not result["rule"].startswith("#"):
+    if db_conn and cursor:
+        try:
+            features_json = json.dumps(raw_values_dict)
             cursor.execute("""
-                INSERT INTO Generated_Rules (alert_id, snort_syntax) 
-                VALUES (:1, :2)
-            """, (result["alert_id"], result["rule"]))
+                INSERT INTO Threat_Logs (source_ip, destination_ip, confidence_score, threat_severity, anomaly_origin, raw_features) 
+                VALUES (:1, :2, :3, :4, :5, :6) RETURNING alert_id INTO :alert_id
+            """, (source, "Target_Interface", prob, result["severity"], result["origin"], features_json))
             
-        db_conn.commit()
-    except Exception as e:
-        print(f"Failed to log to database: {e}")
-        result["alert_id"] = None
+            alert_id = cursor.var(oracledb.NUMBER)
+            result["alert_id"] = alert_id.getvalue()[0]
+            
+            if result["rule"] and not result["rule"].startswith("#"):
+                cursor.execute("""
+                    INSERT INTO Generated_Rules (alert_id, snort_syntax) 
+                    VALUES (:1, :2)
+                """, (result["alert_id"], result["rule"]))
+                
+            db_conn.commit()
+        except Exception as e:
+            print(f"Failed to log to database: {e}")
 
     st.session_state.result = result
-
 
 def revoke_rule():
     """Overrides a false positive, adds to allowlist and flags for MLOps retraining."""
